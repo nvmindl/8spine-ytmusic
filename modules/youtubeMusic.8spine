@@ -6,7 +6,7 @@
  * nsfw: false
  */
 /**
- * YouTube Music Module for 8SPINE v1.8.0
+ * YouTube Music Module for 8SPINE v1.8.1
  * Search via WEB_REMIX, stream via IOS client (HLS).
  * visitorData from search used to pass bot detection on player.
  */
@@ -251,11 +251,16 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
         throw new Error(LOG_PREFIX + ' No streaming data');
     }
 
-    // Strategy 1: HLS manifest (native AVPlayer format on iOS)
-    if (sd.hlsManifestUrl) {
-        console.log(LOG_PREFIX, 'HLS stream for', trackId);
+    // Strategy 1: Direct mp4 audio URL (works for both playback and download)
+    const mp4Formats = (sd.adaptiveFormats || [])
+        .filter(f => f.mimeType?.startsWith('audio/mp4') && f.url);
+
+    if (mp4Formats.length > 0) {
+        mp4Formats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+        const picked = quality === QUALITY.LOW ? mp4Formats[mp4Formats.length - 1] : mp4Formats[0];
+        console.log(LOG_PREFIX, 'Direct mp4 for', trackId, 'itag:', picked.itag, 'bitrate:', picked.bitrate);
         return {
-            streamUrl: sd.hlsManifestUrl,
+            streamUrl: picked.url,
             track: {
                 id: trackId,
                 audioQuality: quality,
@@ -263,16 +268,11 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
         };
     }
 
-    // Strategy 2: Direct mp4 audio URL
-    const mp4Formats = (sd.adaptiveFormats || [])
-        .filter(f => f.mimeType?.startsWith('audio/mp4') && f.url);
-
-    if (mp4Formats.length > 0) {
-        mp4Formats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-        const picked = quality === QUALITY.LOW ? mp4Formats[mp4Formats.length - 1] : mp4Formats[0];
-        console.log(LOG_PREFIX, 'Direct mp4 for', trackId, 'itag:', picked.itag);
+    // Strategy 2: HLS manifest fallback
+    if (sd.hlsManifestUrl) {
+        console.log(LOG_PREFIX, 'HLS fallback for', trackId);
         return {
-            streamUrl: picked.url,
+            streamUrl: sd.hlsManifestUrl,
             track: {
                 id: trackId,
                 audioQuality: quality,
@@ -355,7 +355,7 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.8.0',
+    version: '1.8.1',
     labels: ['YT Music', 'Audio', 'Settings'],
     description: 'Stream from YouTube Music. visitorData session for bot protection bypass.',
 
