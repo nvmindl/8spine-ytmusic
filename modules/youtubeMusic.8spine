@@ -6,7 +6,7 @@
  * nsfw: false
  */
 /**
- * YouTube Music Module for 8SPINE v1.8.2
+ * YouTube Music Module for 8SPINE v1.8.3
  * Search via WEB_REMIX, stream via IOS client (HLS).
  * visitorData from search used to pass bot detection on player.
  */
@@ -359,7 +359,7 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.8.2',
+    version: '1.8.3',
     labels: ['YT Music', 'Audio', 'Settings'],
     description: 'Stream from YouTube Music. visitorData session for bot protection bypass.',
 
@@ -367,7 +367,7 @@ return {
         cookie: {
             type: 'text',
             label: 'YouTube Music Cookie',
-            description: 'Use Cookie-Editor browser extension on music.youtube.com > Export as Header String. Needed for search only.',
+            description: 'Your music.youtube.com cookie (for search only).',
             defaultValue: ''
         },
         quality: {
