@@ -1,6 +1,6 @@
 export const YOUTUBE_MUSIC_MODULE_CODE = `
 /**
- * YouTube Music Module for 8SPINE v1.5.0
+ * YouTube Music Module for 8SPINE v1.5.1
  * Search via WEB_REMIX, stream via IOS client (direct URLs, no auth needed).
  */
 
@@ -260,7 +260,7 @@ function getTrackStreamUrl(trackId, preferredQuality, context) {
         var adaptive = data.streamingData.adaptiveFormats || [];
         for (var i = 0; i < adaptive.length; i++) {
             var f = adaptive[i];
-            if (f.mimeType && f.mimeType.indexOf('audio/') === 0 && f.url) {
+            if (f.mimeType && f.mimeType.indexOf('audio/mp4') === 0 && f.url) {
                 formats.push({ url: f.url, bitrate: f.bitrate || 0, audioQuality: f.audioQuality || '' });
             }
         }
@@ -389,7 +389,7 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.5.0',
+    version: '1.5.1',
     description: 'Stream from YouTube Music. Cookie needed for search only.',
     streamType: 'url',
     logo: 'https://music.youtube.com/img/on_platform_logo_dark.svg',
