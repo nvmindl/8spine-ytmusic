@@ -6,7 +6,7 @@
  * nsfw: false
  */
 /**
- * YouTube Music Module for 8SPINE v1.8.1
+ * YouTube Music Module for 8SPINE v1.8.2
  * Search via WEB_REMIX, stream via IOS client (HLS).
  * visitorData from search used to pass bot detection on player.
  */
@@ -115,7 +115,7 @@ function parseInfoRuns(runs) {
     const parts = [];
     let current = '';
     for (const run of runs) {
-        if (run.text === ' \\u2022 ' || run.text === ' & ') {
+        if (run.text === ' \u2022 ' || run.text === ' & ') {
             if (current) parts.push(current.trim());
             current = '';
         } else {
@@ -123,6 +123,10 @@ function parseInfoRuns(runs) {
         }
     }
     if (current) parts.push(current.trim());
+    // Remove trailing duration (e.g. "4:51", "1:23:45")
+    if (parts.length > 1 && /^\d+:\d{2}(:\d{2})?$/.test(parts[parts.length - 1])) {
+        parts.pop();
+    }
     const typeLabels = ['Song', 'Video', 'EP', 'Single', 'Podcast'];
     let idx = 0;
     if (parts.length > 1 && typeLabels.includes(parts[0])) idx = 1;
@@ -355,7 +359,7 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.8.1',
+    version: '1.8.2',
     labels: ['YT Music', 'Audio', 'Settings'],
     description: 'Stream from YouTube Music. visitorData session for bot protection bypass.',
 
