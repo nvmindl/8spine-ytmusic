@@ -1,0 +1,35 @@
+{
+  "category:modules": [
+    {
+      "id": "youtube-music",
+      "name": "YOUTUBE MUSIC",
+      "pkg": "com.8spine.module.youtube.music",
+      "file": "youtubeMusic.8spine",
+      "download": "modules/youtubeMusic.8spine",
+      "version": "v1.0.0",
+      "code": 100,
+      "type": "MODULE",
+      "author": "nvmindl",
+      "description": "STREAM AUDIO FROM YOUTUBE MUSIC WITH YOUR COOKIE",
+      "tags": [
+        "YT MUSIC",
+        "AUDIO",
+        "SETTINGS"
+      ],
+      "featured": false,
+      "trusted": false,
+      "nsfw": false,
+      "size": 15017,
+      "lang": "all",
+      "folder": "modules",
+      "sources": [
+        {
+          "name": "YOUTUBE MUSIC",
+          "lang": "all",
+          "id": "youtube-music",
+          "baseUrl": "."
+        }
+      ]
+    }
+  ]
+}
