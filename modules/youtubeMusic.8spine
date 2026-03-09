@@ -1,18 +1,11 @@
 export const YOUTUBE_MUSIC_MODULE_CODE = `
 /**
  * YouTube Music Module for 8SPINE
- * Search via YouTube Music InnerTube API, stream via Piped instances.
+ * Search and stream from YouTube Music using your account cookie.
  */
 
 const YTM_BASE = 'https://music.youtube.com';
 const YTM_API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
-
-const PIPED_INSTANCES = [
-    'https://pipedapi.kavin.rocks',
-    'https://pipedapi.adminforge.de',
-    'https://pipedapi.r4fo.com',
-    'https://pipedapi.leptons.xyz'
-];
 
 const WEB_REMIX_CONTEXT = {
     client: {
@@ -177,49 +170,90 @@ function searchTracks(query, limit, context) {
     });
 }
 
-function tryPipedInstance(instance, trackId, quality) {
-    return fetch(instance + '/streams/' + trackId)
-    .then(function(res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json();
-    })
-    .then(function(data) {
-        var audioStreams = data.audioStreams || [];
-        if (!audioStreams.length) throw new Error('no audio streams');
+function getTrackStreamUrl(trackId, preferredQuality, context) {
+    var cookie = (context && context.settings && context.settings.cookie && context.settings.cookie.value) || '';
+    var quality = (context && context.settings && context.settings.quality && context.settings.quality.value) || preferredQuality || 'HIGH';
 
-        audioStreams.sort(function(a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
+    if (!cookie) {
+        console.log('[YTMusic] no cookie set - streaming requires authentication');
+        return Promise.resolve({ streamUrl: '', track: { id: trackId, audioQuality: quality } });
+    }
+
+    var url = YTM_BASE + '/youtubei/v1/player?key=' + YTM_API_KEY;
+
+    return fetch(url, {
+        method: 'POST',
+        headers: getHeaders(cookie),
+        body: JSON.stringify({
+            context: WEB_REMIX_CONTEXT,
+            videoId: trackId,
+            contentCheckOk: true,
+            racyCheckOk: true,
+            playbackContext: {
+                contentPlaybackContext: {
+                    signatureTimestamp: 20073
+                }
+            }
+        }),
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (!data.streamingData) {
+            var reason = (data.playabilityStatus && data.playabilityStatus.reason) || 'unknown';
+            console.log('[YTMusic] player failed:', data.playabilityStatus && data.playabilityStatus.status, reason);
+            return { streamUrl: '', track: { id: trackId, audioQuality: quality } };
+        }
+
+        var formats = [];
+        var adaptive = data.streamingData.adaptiveFormats || [];
+        for (var i = 0; i < adaptive.length; i++) {
+            var f = adaptive[i];
+            if (f.mimeType && f.mimeType.indexOf('audio/') === 0) {
+                var streamUrl = f.url || '';
+                if (!streamUrl && f.signatureCipher) {
+                    var params = {};
+                    var pairs = f.signatureCipher.split('&');
+                    for (var p = 0; p < pairs.length; p++) {
+                        var kv = pairs[p].split('=');
+                        params[kv[0]] = decodeURIComponent(kv[1] || '');
+                    }
+                    if (params.url) {
+                        streamUrl = params.url;
+                        if (params.s && params.sp) {
+                            streamUrl += '&' + params.sp + '=' + encodeURIComponent(params.s);
+                        }
+                    }
+                }
+                if (streamUrl) {
+                    formats.push({ url: streamUrl, bitrate: f.bitrate || 0, audioQuality: f.audioQuality || '' });
+                }
+            }
+        }
+
+        if (!formats.length) {
+            console.log('[YTMusic] no audio formats found for', trackId);
+            return { streamUrl: '', track: { id: trackId, audioQuality: quality } };
+        }
+
+        formats.sort(function(a, b) { return b.bitrate - a.bitrate; });
 
         var picked;
         if (quality === 'LOW') {
-            picked = audioStreams[audioStreams.length - 1];
+            picked = formats[formats.length - 1];
         } else {
-            picked = audioStreams[0];
+            picked = formats[0];
         }
 
-        var bps = (picked.bitrate || 0) / 1000;
-        var audioQuality = bps <= 64 ? 'LOW' : bps >= 256 ? 'LOSSLESS' : 'HIGH';
+        var aq = picked.audioQuality === 'AUDIO_QUALITY_LOW' ? 'LOW'
+            : picked.audioQuality === 'AUDIO_QUALITY_HIGH' ? 'LOSSLESS' : 'HIGH';
 
         return {
             streamUrl: picked.url,
-            track: { id: trackId, audioQuality: audioQuality }
+            track: { id: trackId, audioQuality: aq }
         };
-    });
-}
-
-function getTrackStreamUrl(trackId, preferredQuality, context) {
-    var quality = (context && context.settings && context.settings.quality && context.settings.quality.value) || preferredQuality || 'HIGH';
-
-    var chain = Promise.reject();
-    for (var i = 0; i < PIPED_INSTANCES.length; i++) {
-        (function(inst) {
-            chain = chain.catch(function() {
-                return tryPipedInstance(inst, trackId, quality);
-            });
-        })(PIPED_INSTANCES[i]);
-    }
-
-    return chain.catch(function() {
-        console.log('[YTMusic] all Piped instances failed for', trackId);
+    })
+    .catch(function(e) {
+        console.log('[YTMusic] stream error:', e);
         return { streamUrl: '', track: { id: trackId, audioQuality: quality } };
     });
 }
@@ -312,8 +346,8 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.1.0',
-    description: 'Stream audio from YouTube Music via Piped. Cookie optional for personalized search.',
+    version: '1.2.0',
+    description: 'Stream audio from YouTube Music. Requires your YTM cookie for playback.',
     streamType: 'url',
     logo: 'https://music.youtube.com/img/on_platform_logo_dark.svg',
     labels: ['YT Music', 'Audio', 'Settings'],
