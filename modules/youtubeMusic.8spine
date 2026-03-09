@@ -48,6 +48,64 @@ function getHeaders(cookie) {
     return h;
 }
 
+function getPlayerHeaders(cookie) {
+    var h = getHeaders(cookie);
+    var auth = getSapisidHash(cookie, YTM_BASE);
+    if (auth) h['Authorization'] = auth;
+    h['X-Goog-AuthUser'] = '0';
+    h['X-Origin'] = YTM_BASE;
+    return h;
+}
+
+function sha1(str) {
+    function rotl(n, s) { return (n << s) | (n >>> (32 - s)); }
+    var utf8 = unescape(encodeURIComponent(str));
+    var msg = [];
+    for (var i = 0; i < utf8.length; i++) msg.push(utf8.charCodeAt(i));
+    msg.push(0x80);
+    while ((msg.length % 64) !== 56) msg.push(0);
+    var bitLen = utf8.length * 8;
+    msg.push(0, 0, 0, 0);
+    msg.push((bitLen >>> 24) & 0xff, (bitLen >>> 16) & 0xff, (bitLen >>> 8) & 0xff, bitLen & 0xff);
+    var h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0;
+    for (var off = 0; off < msg.length; off += 64) {
+        var w = [];
+        for (var i = 0; i < 16; i++) {
+            w[i] = (msg[off+i*4] << 24) | (msg[off+i*4+1] << 16) | (msg[off+i*4+2] << 8) | msg[off+i*4+3];
+        }
+        for (var i = 16; i < 80; i++) w[i] = rotl(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
+        var a = h0, b = h1, c = h2, d = h3, e = h4;
+        for (var i = 0; i < 80; i++) {
+            var f, k;
+            if (i < 20)      { f = (b & c) | ((~b) & d); k = 0x5A827999; }
+            else if (i < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1; }
+            else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC; }
+            else             { f = b ^ c ^ d; k = 0xCA62C1D6; }
+            var t = (rotl(a, 5) + f + e + k + w[i]) & 0xFFFFFFFF;
+            e = d; d = c; c = rotl(b, 30); b = a; a = t;
+        }
+        h0 = (h0 + a) & 0xFFFFFFFF; h1 = (h1 + b) & 0xFFFFFFFF;
+        h2 = (h2 + c) & 0xFFFFFFFF; h3 = (h3 + d) & 0xFFFFFFFF;
+        h4 = (h4 + e) & 0xFFFFFFFF;
+    }
+    function hex8(n) {
+        var s = '';
+        for (var i = 7; i >= 0; i--) s += '0123456789abcdef'.charAt((n >>> (i*4)) & 0xf);
+        return s;
+    }
+    return hex8(h0) + hex8(h1) + hex8(h2) + hex8(h3) + hex8(h4);
+}
+
+function getSapisidHash(cookie, origin) {
+    if (!cookie) return null;
+    var m = cookie.match(/SAPISID=([^;\s]+)/);
+    if (!m) m = cookie.match(/__Secure-3PAPISID=([^;\s]+)/);
+    if (!m) return null;
+    var ts = Math.floor(Date.now() / 1000);
+    var hash = sha1(ts + ' ' + m[1] + ' ' + origin);
+    return 'SAPISIDHASH ' + ts + '_' + hash;
+}
+
 function parseInfoRuns(runs) {
     if (!runs || !runs.length) return { artist: '', album: '' };
     var parts = [];
@@ -183,7 +241,7 @@ function getTrackStreamUrl(trackId, preferredQuality, context) {
 
     return fetch(url, {
         method: 'POST',
-        headers: getHeaders(cookie),
+        headers: getPlayerHeaders(cookie),
         body: JSON.stringify({
             context: WEB_REMIX_CONTEXT,
             videoId: trackId,
@@ -346,8 +404,8 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.2.0',
-    description: 'Stream audio from YouTube Music. Requires your YTM cookie for playback.',
+    version: '1.3.0',
+    description: 'Stream from YouTube Music. Requires cookie from Cookie-Editor extension.',
     streamType: 'url',
     logo: 'https://music.youtube.com/img/on_platform_logo_dark.svg',
     labels: ['YT Music', 'Audio', 'Settings'],
@@ -356,7 +414,7 @@ return {
         cookie: {
             type: 'text',
             label: 'YouTube Music Cookie',
-            description: 'Paste your YouTube Music cookie here. Get it from browser DevTools console: document.cookie',
+            description: 'Use Cookie-Editor browser extension on music.youtube.com > Export as Header String. Paste the FULL string here. document.cookie will NOT work.',
             defaultValue: ''
         },
         quality: {
