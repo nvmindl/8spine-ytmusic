@@ -1,6 +1,6 @@
 export const YOUTUBE_MUSIC_MODULE_CODE = `
 /**
- * YouTube Music Module for 8SPINE v1.5.1
+ * YouTube Music Module for 8SPINE v1.6.0
  * Search via WEB_REMIX, stream via IOS client (direct URLs, no auth needed).
  */
 
@@ -234,63 +234,91 @@ function searchTracks(query, limit, context) {
     });
 }
 
-function getTrackStreamUrl(trackId, preferredQuality, context) {
+async function getTrackStreamUrl(trackId, preferredQuality, context) {
     var quality = (context && context.settings && context.settings.quality && context.settings.quality.value) || preferredQuality || 'HIGH';
+    var empty = { streamUrl: '', track: { id: trackId, audioQuality: quality } };
 
-    return fetch(YT_BASE + '/youtubei/v1/player?prettyPrint=false', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': IOS_UA,
-        },
-        body: JSON.stringify({
-            context: { client: IOS_CONTEXT },
-            video_id: trackId,
-        }),
-    })
-    .then(function(res) { return res.json(); })
-    .then(function(data) {
+    try {
+        var res = await fetch(YT_BASE + '/youtubei/v1/player?prettyPrint=false', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': IOS_UA,
+            },
+            body: JSON.stringify({
+                context: { client: IOS_CONTEXT },
+                videoId: trackId,
+                racyCheckOk: true,
+                contentCheckOk: true,
+            }),
+        });
+        var data = await res.json();
+
         if (!data.streamingData) {
             var reason = (data.playabilityStatus && data.playabilityStatus.reason) || 'unknown';
             console.log('[YTMusic] player:', data.playabilityStatus && data.playabilityStatus.status, reason);
-            return { streamUrl: '', track: { id: trackId, audioQuality: quality } };
+            return empty;
         }
 
+        // Strategy 1: HLS manifest (native AVPlayer format)
+        var hlsUrl = data.streamingData.hlsManifestUrl;
+        if (hlsUrl) {
+            try {
+                var hlsRes = await fetch(hlsUrl);
+                var m3u8 = await hlsRes.text();
+                var lines = m3u8.split('\\n');
+                // Extract audio-only EXT-X-MEDIA URIs
+                var audioHigh = '';
+                var audioLow = '';
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i];
+                    if (line.indexOf('#EXT-X-MEDIA') === 0 && line.indexOf('TYPE=AUDIO') !== -1) {
+                        var uriMatch = line.match(/URI="([^"]+)"/);
+                        var gidMatch = line.match(/GROUP-ID="([^"]+)"/);
+                        if (uriMatch && gidMatch) {
+                            if (gidMatch[1] === '234') audioHigh = uriMatch[1];
+                            else if (gidMatch[1] === '233') audioLow = uriMatch[1];
+                        }
+                    }
+                }
+                var picked = quality === 'LOW' ? (audioLow || audioHigh) : (audioHigh || audioLow);
+                if (picked) {
+                    var aq = picked === audioHigh ? 'HIGH' : 'LOW';
+                    console.log('[YTMusic] HLS audio:', aq, trackId);
+                    return { streamUrl: picked, track: { id: trackId, audioQuality: aq } };
+                }
+                // If no audio-only found, use master HLS manifest directly
+                console.log('[YTMusic] HLS master fallback for', trackId);
+                return { streamUrl: hlsUrl, track: { id: trackId, audioQuality: 'HIGH' } };
+            } catch (e) {
+                console.log('[YTMusic] HLS parse error, trying direct:', e);
+            }
+        }
+
+        // Strategy 2: Direct mp4 URL fallback
         var formats = [];
         var adaptive = data.streamingData.adaptiveFormats || [];
-        for (var i = 0; i < adaptive.length; i++) {
-            var f = adaptive[i];
+        for (var j = 0; j < adaptive.length; j++) {
+            var f = adaptive[j];
             if (f.mimeType && f.mimeType.indexOf('audio/mp4') === 0 && f.url) {
                 formats.push({ url: f.url, bitrate: f.bitrate || 0, audioQuality: f.audioQuality || '' });
             }
         }
-
-        if (!formats.length) {
-            console.log('[YTMusic] no direct audio URLs for', trackId);
-            return { streamUrl: '', track: { id: trackId, audioQuality: quality } };
+        if (formats.length) {
+            formats.sort(function(a, b) { return b.bitrate - a.bitrate; });
+            var pick = quality === 'LOW' ? formats[formats.length - 1] : formats[0];
+            var aq2 = pick.audioQuality === 'AUDIO_QUALITY_LOW' ? 'LOW'
+                : pick.audioQuality === 'AUDIO_QUALITY_HIGH' ? 'LOSSLESS' : 'HIGH';
+            console.log('[YTMusic] direct mp4:', aq2, trackId);
+            return { streamUrl: pick.url, track: { id: trackId, audioQuality: aq2 } };
         }
 
-        formats.sort(function(a, b) { return b.bitrate - a.bitrate; });
-
-        var picked;
-        if (quality === 'LOW') {
-            picked = formats[formats.length - 1];
-        } else {
-            picked = formats[0];
-        }
-
-        var aq = picked.audioQuality === 'AUDIO_QUALITY_LOW' ? 'LOW'
-            : picked.audioQuality === 'AUDIO_QUALITY_HIGH' ? 'LOSSLESS' : 'HIGH';
-
-        return {
-            streamUrl: picked.url,
-            track: { id: trackId, audioQuality: aq }
-        };
-    })
-    .catch(function(e) {
+        console.log('[YTMusic] no audio for', trackId);
+        return empty;
+    } catch (e) {
         console.log('[YTMusic] stream error:', e);
-        return { streamUrl: '', track: { id: trackId, audioQuality: quality } };
-    });
+        return empty;
+    }
 }
 
 function getAlbum(albumId, context) {
@@ -389,7 +417,7 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.5.1',
+    version: '1.6.0',
     description: 'Stream from YouTube Music. Cookie needed for search only.',
     streamType: 'url',
     logo: 'https://music.youtube.com/img/on_platform_logo_dark.svg',
