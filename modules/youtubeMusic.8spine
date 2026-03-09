@@ -6,8 +6,8 @@
  * nsfw: false
  */
 /**
- * YouTube Music Module for 8SPINE v1.8.6
- * Search via WEB_REMIX, stream via IOS client (HLS).
+ * YouTube Music Module for 8SPINE v1.9.0
+ * Search via WEB_REMIX, stream via IOS client (HLS preferred).
  * visitorData from search used to pass bot detection on player.
  */
 
@@ -246,6 +246,8 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
 
     const data = await response.json();
 
+    console.log(LOG_PREFIX, 'Player status:', data?.playabilityStatus?.status, 'for', trackId);
+
     if (data?.playabilityStatus?.status !== 'OK') {
         throw new Error(LOG_PREFIX + ' Playback blocked: ' + (data?.playabilityStatus?.reason || 'unknown'));
     }
@@ -255,7 +257,19 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
         throw new Error(LOG_PREFIX + ' No streaming data');
     }
 
-    // Strategy 1: Direct mp4 audio URL (works for both playback and download)
+    // Strategy 1: HLS manifest (native iOS support, most reliable)
+    if (sd.hlsManifestUrl) {
+        console.log(LOG_PREFIX, 'HLS stream for', trackId);
+        return {
+            streamUrl: sd.hlsManifestUrl,
+            track: {
+                id: trackId,
+                audioQuality: quality,
+            }
+        };
+    }
+
+    // Strategy 2: Direct mp4 audio URL
     const mp4Formats = (sd.adaptiveFormats || [])
         .filter(f => f.mimeType?.startsWith('audio/mp4') && f.url);
 
@@ -265,18 +279,6 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
         console.log(LOG_PREFIX, 'Direct mp4 for', trackId, 'itag:', picked.itag, 'bitrate:', picked.bitrate);
         return {
             streamUrl: picked.url,
-            track: {
-                id: trackId,
-                audioQuality: quality,
-            }
-        };
-    }
-
-    // Strategy 2: HLS manifest fallback
-    if (sd.hlsManifestUrl) {
-        console.log(LOG_PREFIX, 'HLS fallback for', trackId);
-        return {
-            streamUrl: sd.hlsManifestUrl,
             track: {
                 id: trackId,
                 audioQuality: quality,
@@ -359,7 +361,7 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.8.6',
+    version: '1.9.0',
     labels: ['YT Music', 'Audio', 'Settings'],
     description: 'Stream from YouTube Music. visitorData session for bot protection bypass.',
 
