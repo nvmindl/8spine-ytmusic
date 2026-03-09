@@ -6,7 +6,7 @@
  * nsfw: false
  */
 /**
- * YouTube Music Module for 8SPINE v1.9.0
+ * YouTube Music Module for 8SPINE v2.0.0
  * Search via WEB_REMIX, stream via IOS client (HLS preferred).
  * visitorData from search used to pass bot detection on player.
  */
@@ -61,55 +61,6 @@ function bestThumbnail(thumbnails) {
     ).url;
 }
 
-function sha1(str) {
-    function rotl(n, s) { return (n << s) | (n >>> (32 - s)); }
-    const utf8 = unescape(encodeURIComponent(str));
-    const msg = [];
-    for (let i = 0; i < utf8.length; i++) msg.push(utf8.charCodeAt(i));
-    msg.push(0x80);
-    while ((msg.length % 64) !== 56) msg.push(0);
-    const bitLen = utf8.length * 8;
-    msg.push(0, 0, 0, 0);
-    msg.push((bitLen >>> 24) & 0xff, (bitLen >>> 16) & 0xff, (bitLen >>> 8) & 0xff, bitLen & 0xff);
-    let h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0;
-    for (let off = 0; off < msg.length; off += 64) {
-        const w = [];
-        for (let i = 0; i < 16; i++) {
-            w[i] = (msg[off+i*4] << 24) | (msg[off+i*4+1] << 16) | (msg[off+i*4+2] << 8) | msg[off+i*4+3];
-        }
-        for (let i = 16; i < 80; i++) w[i] = rotl(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
-        let a = h0, b = h1, c = h2, d = h3, e = h4;
-        for (let i = 0; i < 80; i++) {
-            let f, k;
-            if (i < 20)      { f = (b & c) | ((~b) & d); k = 0x5A827999; }
-            else if (i < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1; }
-            else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC; }
-            else              { f = b ^ c ^ d; k = 0xCA62C1D6; }
-            const t = (rotl(a, 5) + f + e + k + w[i]) & 0xFFFFFFFF;
-            e = d; d = c; c = rotl(b, 30); b = a; a = t;
-        }
-        h0 = (h0 + a) & 0xFFFFFFFF; h1 = (h1 + b) & 0xFFFFFFFF;
-        h2 = (h2 + c) & 0xFFFFFFFF; h3 = (h3 + d) & 0xFFFFFFFF;
-        h4 = (h4 + e) & 0xFFFFFFFF;
-    }
-    function hex8(n) {
-        let s = '';
-        for (let i = 7; i >= 0; i--) s += '0123456789abcdef'.charAt((n >>> (i*4)) & 0xf);
-        return s;
-    }
-    return hex8(h0) + hex8(h1) + hex8(h2) + hex8(h3) + hex8(h4);
-}
-
-function getSapisidHash(cookie, origin) {
-    if (!cookie) return null;
-    let m = cookie.match(/SAPISID=([^;\\s]+)/);
-    if (!m) m = cookie.match(/__Secure-3PAPISID=([^;\\s]+)/);
-    if (!m) return null;
-    const ts = Math.floor(Date.now() / 1000);
-    const hash = sha1(ts + ' ' + m[1] + ' ' + origin);
-    return 'SAPISIDHASH ' + ts + '_' + hash;
-}
-
 function parseInfoRuns(runs) {
     if (!runs || !runs.length) return { artist: '', album: '' };
     const parts = [];
@@ -133,23 +84,13 @@ function parseInfoRuns(runs) {
     return { artist: parts[idx] || '', album: parts[idx + 1] || '' };
 }
 
-async function searchTracks(query, limit = 20, context) {
-    const cookie = context?.settings?.cookie?.value || '';
-
+async function searchTracks(query, limit = 20) {
     const headers = {
         'Content-Type': 'application/json',
         'Origin': YTM_BASE,
         'Referer': YTM_BASE + '/',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     };
-    if (cookie) {
-        headers['Cookie'] = cookie;
-        const auth = getSapisidHash(cookie, YTM_BASE);
-        if (auth) {
-            headers['Authorization'] = auth;
-            headers['X-Goog-AuthUser'] = '0';
-        }
-    }
 
     const response = await fetch(YTM_BASE + '/youtubei/v1/search?key=' + YTM_API_KEY, {
         method: 'POST',
@@ -289,23 +230,13 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
     throw new Error(LOG_PREFIX + ' No playable audio found');
 }
 
-async function getAlbum(albumId, context) {
-    const cookie = context?.settings?.cookie?.value || '';
-
+async function getAlbum(albumId) {
     const headers = {
         'Content-Type': 'application/json',
         'Origin': YTM_BASE,
         'Referer': YTM_BASE + '/',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     };
-    if (cookie) {
-        headers['Cookie'] = cookie;
-        const auth = getSapisidHash(cookie, YTM_BASE);
-        if (auth) {
-            headers['Authorization'] = auth;
-            headers['X-Goog-AuthUser'] = '0';
-        }
-    }
 
     const response = await fetch(YTM_BASE + '/youtubei/v1/browse?key=' + YTM_API_KEY, {
         method: 'POST',
@@ -361,17 +292,11 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.9.0',
+    version: '2.0.0',
     labels: ['YT Music', 'Audio', 'Settings'],
-    description: 'Stream from YouTube Music. visitorData session for bot protection bypass.',
+    description: 'Stream from YouTube Music via HLS.',
 
     settings: {
-        cookie: {
-            type: 'text',
-            label: 'YouTube Music Cookie',
-            description: 'Your music.youtube.com cookie (for search only).',
-            defaultValue: ''
-        },
         quality: {
             type: 'selector',
             label: 'Audio Quality',
