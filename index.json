@@ -6,11 +6,11 @@
       "pkg": "com.8spine.module.youtube.music",
       "file": "youtubeMusic.8spine",
       "download": "modules/youtubeMusic.8spine",
-      "version": "v1.0.0",
-      "code": 100,
+      "version": "v1.1.0",
+      "code": 110,
       "type": "MODULE",
       "author": "nvmindl",
-      "description": "STREAM AUDIO FROM YOUTUBE MUSIC WITH YOUR COOKIE",
+      "description": "STREAM AUDIO FROM YOUTUBE MUSIC VIA PIPED",
       "tags": [
         "YT MUSIC",
         "AUDIO",
@@ -19,7 +19,7 @@
       "featured": false,
       "trusted": false,
       "nsfw": false,
-      "size": 15017,
+      "size": 14126,
       "lang": "all",
       "folder": "modules",
       "sources": [
