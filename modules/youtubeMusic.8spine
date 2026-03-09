@@ -6,11 +6,13 @@
  * nsfw: false
  */
 /**
- * YouTube Music Module for 8SPINE v1.7.0
+ * YouTube Music Module for 8SPINE v1.8.0
  * Search via WEB_REMIX, stream via IOS client (HLS).
+ * visitorData from search used to pass bot detection on player.
  */
 
 const LOG_PREFIX = '[YTMusic]';
+let cachedVisitorData = null;
 
 const YTM_BASE = 'https://music.youtube.com';
 const YTM_API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
@@ -156,6 +158,11 @@ async function searchTracks(query, limit = 20, context) {
     });
 
     const data = await response.json();
+
+    if (data?.responseContext?.visitorData) {
+        cachedVisitorData = data.responseContext.visitorData;
+    }
+
     const tracks = [];
 
     const sections = data?.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents || [];
@@ -192,19 +199,44 @@ async function searchTracks(query, limit = 20, context) {
     return { tracks, total: tracks.length };
 }
 
+async function getVisitorData() {
+    if (cachedVisitorData) return cachedVisitorData;
+    try {
+        const resp = await fetch(YTM_BASE + '/youtubei/v1/visitor_id?key=' + YTM_API_KEY, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: { client: WEB_REMIX_CONTEXT } }),
+        });
+        const d = await resp.json();
+        if (d?.responseContext?.visitorData) {
+            cachedVisitorData = d.responseContext.visitorData;
+        }
+    } catch (e) {
+        console.log(LOG_PREFIX, 'visitorData fetch failed:', e.message);
+    }
+    return cachedVisitorData;
+}
+
 async function getTrackStreamUrl(trackId, preferredQuality, context) {
     const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
 
     console.log(LOG_PREFIX, 'Getting stream for', trackId, 'quality:', quality);
 
+    const visitorData = await getVisitorData();
+    const clientContext = Object.assign({}, IOS_CONTEXT);
+    if (visitorData) clientContext.visitorData = visitorData;
+
     const response = await fetch(YTM_BASE + '/youtubei/v1/player?prettyPrint=false', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'User-Agent': 'com.google.ios.youtube/20.03.02 (iPhone16,2; U; CPU iOS 18_2_1 like Mac OS X)',
         },
         body: JSON.stringify({
-            context: { client: IOS_CONTEXT },
+            context: { client: clientContext },
             videoId: trackId,
+            contentCheckOk: true,
+            racyCheckOk: true,
         }),
     });
 
@@ -280,6 +312,10 @@ async function getAlbum(albumId, context) {
 
     const data = await response.json();
 
+    if (data?.responseContext?.visitorData) {
+        cachedVisitorData = data.responseContext.visitorData;
+    }
+
     const header = data?.header?.musicImmersiveHeaderRenderer || data?.header?.musicDetailHeaderRenderer || {};
     const albumTitle = header?.title?.runs?.[0]?.text || '';
     let albumArtist = '';
@@ -319,9 +355,9 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.7.0',
+    version: '1.8.0',
     labels: ['YT Music', 'Audio', 'Settings'],
-    description: 'Stream from YouTube Music via IOS client HLS. Cookie for search auth.',
+    description: 'Stream from YouTube Music. visitorData session for bot protection bypass.',
 
     settings: {
         cookie: {

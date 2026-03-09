@@ -6,11 +6,11 @@
       "pkg": "com.8spine.module.youtube.music",
       "file": "youtubeMusic.8spine",
       "download": "modules/youtubeMusic.8spine",
-      "version": "v1.7.0",
-      "code": 170,
+      "version": "v1.8.0",
+      "code": 180,
       "type": "MODULE",
       "author": "nvmindl",
-      "description": "STREAM AUDIO FROM YOUTUBE MUSIC VIA IOS HLS",
+      "description": "STREAM AUDIO FROM YOUTUBE MUSIC - VISITOR SESSION BOT BYPASS",
       "tags": [
         "YT MUSIC",
         "AUDIO",
@@ -19,7 +19,7 @@
       "featured": false,
       "trusted": false,
       "nsfw": false,
-      "size": 11908,
+      "size": 13236,
       "lang": "all",
       "folder": "modules",
       "sources": [
