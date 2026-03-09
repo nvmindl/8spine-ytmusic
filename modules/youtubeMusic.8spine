@@ -1,7 +1,7 @@
 export const YOUTUBE_MUSIC_MODULE_CODE = `
 /**
- * YouTube Music Module for 8SPINE v1.4.0
- * Search via WEB_REMIX, stream via ANDROID_VR (direct URLs).
+ * YouTube Music Module for 8SPINE v1.5.0
+ * Search via WEB_REMIX, stream via IOS client (direct URLs, no auth needed).
  */
 
 var YTM_BASE = 'https://music.youtube.com';
@@ -9,7 +9,7 @@ var YT_BASE = 'https://www.youtube.com';
 var YTM_API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
 
 var WEB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-var VR_UA = 'com.google.android.apps.youtube.vr.oculus/1.71.26 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip';
+var IOS_UA = 'com.google.ios.youtube/20.03.02 (iPhone16,2; U; CPU iOS 18_2_1 like Mac OS X;)';
 
 var WEB_REMIX_CONTEXT = {
     client: {
@@ -20,19 +20,15 @@ var WEB_REMIX_CONTEXT = {
     },
 };
 
-var VR_CONTEXT = {
-    clientName: 'ANDROID_VR',
-    clientVersion: '1.71.26',
-    deviceMake: 'Oculus',
-    deviceModel: 'Quest 3',
-    androidSdkVersion: 32,
-    osName: 'Android',
-    osVersion: '12L',
+var IOS_CONTEXT = {
+    clientName: 'IOS',
+    clientVersion: '20.03.02',
+    deviceMake: 'Apple',
+    deviceModel: 'iPhone16,2',
+    osName: 'iPhone',
+    osVersion: '18.2.1.22C161',
     hl: 'en',
 };
-
-var _session = null;
-var _sessionExpiry = 0;
 
 function parseDuration(text) {
     if (!text) return 0;
@@ -47,49 +43,6 @@ function bestThumbnail(thumbnails) {
     return thumbnails.reduce(function(best, t) {
         return (t.width || 0) > (best.width || 0) ? t : best;
     }).url;
-}
-
-function parseSetCookies(raw) {
-    if (!raw) return '';
-    var parts = raw.split(/,\s*(?=[A-Za-z_][A-Za-z0-9_.-]*=)/);
-    var cookies = [];
-    for (var i = 0; i < parts.length; i++) {
-        var nv = parts[i].split(';')[0].trim();
-        if (nv && nv.indexOf('=') > 0) {
-            var name = nv.split('=')[0].toLowerCase();
-            if (name !== 'expires' && name !== 'path' && name !== 'domain') {
-                cookies.push(nv);
-            }
-        }
-    }
-    return cookies.join('; ');
-}
-
-function initSession() {
-    var now = Date.now();
-    if (_session && _sessionExpiry > now) return Promise.resolve(_session);
-
-    return fetch(YT_BASE + '/', {
-        headers: {
-            'User-Agent': WEB_UA,
-            'Cookie': 'SOCS=CAI',
-        },
-    })
-    .then(function(resp) {
-        var setCookie = '';
-        try { setCookie = resp.headers.get('set-cookie') || ''; } catch(e) {}
-        return resp.text().then(function(text) {
-            var vdm = text.match(/"visitorData":"([^"]+)"/);
-            var cookies = parseSetCookies(setCookie);
-            cookies = 'SOCS=CAI' + (cookies ? '; ' + cookies : '');
-            _session = {
-                visitorData: vdm ? vdm[1] : '',
-                cookies: cookies,
-            };
-            _sessionExpiry = now + 3600000;
-            return _session;
-        });
-    });
 }
 
 function getSearchHeaders(cookie) {
@@ -284,30 +237,22 @@ function searchTracks(query, limit, context) {
 function getTrackStreamUrl(trackId, preferredQuality, context) {
     var quality = (context && context.settings && context.settings.quality && context.settings.quality.value) || preferredQuality || 'HIGH';
 
-    return initSession().then(function(session) {
-        var vrCtx = {};
-        for (var k in VR_CONTEXT) vrCtx[k] = VR_CONTEXT[k];
-        if (session.visitorData) vrCtx.visitorData = session.visitorData;
-
-        return fetch(YT_BASE + '/youtubei/v1/player?prettyPrint=false', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'User-Agent': VR_UA,
-                'Cookie': session.cookies,
-            },
-            body: JSON.stringify({
-                context: { client: vrCtx },
-                video_id: trackId,
-            }),
-        });
+    return fetch(YT_BASE + '/youtubei/v1/player?prettyPrint=false', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': IOS_UA,
+        },
+        body: JSON.stringify({
+            context: { client: IOS_CONTEXT },
+            video_id: trackId,
+        }),
     })
     .then(function(res) { return res.json(); })
     .then(function(data) {
         if (!data.streamingData) {
             var reason = (data.playabilityStatus && data.playabilityStatus.reason) || 'unknown';
             console.log('[YTMusic] player:', data.playabilityStatus && data.playabilityStatus.status, reason);
-            _session = null;
             return { streamUrl: '', track: { id: trackId, audioQuality: quality } };
         }
 
@@ -444,8 +389,8 @@ return {
     id: 'youtube-music',
     name: 'YouTube Music',
     author: 'nvmindl',
-    version: '1.4.0',
-    description: 'Stream from YouTube Music. Cookie needed for search (Cookie-Editor > Header String).',
+    version: '1.5.0',
+    description: 'Stream from YouTube Music. Cookie needed for search only.',
     streamType: 'url',
     logo: 'https://music.youtube.com/img/on_platform_logo_dark.svg',
     labels: ['YT Music', 'Audio', 'Settings'],
@@ -454,7 +399,7 @@ return {
         cookie: {
             type: 'text',
             label: 'YouTube Music Cookie',
-            description: 'Use Cookie-Editor browser extension on music.youtube.com > Export as Header String. Paste the FULL string here.',
+            description: 'Use Cookie-Editor browser extension on music.youtube.com > Export as Header String. Needed for search only.',
             defaultValue: ''
         },
         quality: {
