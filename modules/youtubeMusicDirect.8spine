@@ -1,0 +1,425 @@
+/* @8spine-meta
+ * type: MODULE
+ * category: modules
+ * featured: false
+ * trusted: false
+ * nsfw: false
+ */
+
+const LOG_PREFIX = '[YTMusicDirect]';
+
+const YTM_BASE = 'https://music.youtube.com';
+const YTM_API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
+
+const VISITOR_DATA_TTL_MS = 20 * 60 * 1000;
+let cachedVisitorData = null;
+let cachedVisitorDataAt = 0;
+
+const WEB_REMIX_CONTEXT = {
+    clientName: 'WEB_REMIX',
+    clientVersion: '1.20260304.03.00',
+    hl: 'en',
+    gl: 'US',
+};
+
+const IOS_CONTEXT = {
+    clientName: 'IOS',
+    clientVersion: '20.22.1',
+    deviceMake: 'Apple',
+    deviceModel: 'iPhone16,2',
+    osName: 'iPhone',
+    osVersion: '18.5.0.22F76',
+    hl: 'en',
+    gl: 'US',
+};
+
+const QUALITY = {
+    LOW: 'LOW',
+    HIGH: 'HIGH',
+    LOSSLESS: 'LOSSLESS',
+};
+
+const QUALITY_OPTIONS = [
+    { label: 'Low', value: QUALITY.LOW },
+    { label: 'High', value: QUALITY.HIGH },
+    { label: 'Best Available', value: QUALITY.LOSSLESS },
+];
+
+function parseDuration(text) {
+    if (!text) return 0;
+    const parts = text.split(':').map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] || 0;
+}
+
+function bestThumbnail(thumbnails) {
+    if (!thumbnails || !thumbnails.length) return '';
+    return thumbnails.reduce((best, t) =>
+        (t.width || 0) > (best.width || 0) ? t : best
+    ).url;
+}
+
+function parseInfoRuns(runs) {
+    if (!runs || !runs.length) return { artist: '', album: '' };
+
+    const parts = [];
+    let current = '';
+
+    for (const run of runs) {
+        if (run.text === ' \u2022 ') {
+            if (current) parts.push(current.trim());
+            current = '';
+        } else {
+            current += run.text;
+        }
+    }
+
+    if (current) parts.push(current.trim());
+
+    while (parts.length > 1 && /^\d+:\d{2}(:\d{2})?$/.test(parts[parts.length - 1])) {
+        parts.pop();
+    }
+
+    const typeLabels = ['Song', 'Video', 'EP', 'Single', 'Podcast'];
+    let idx = 0;
+    if (parts.length > 1 && typeLabels.includes(parts[0])) idx = 1;
+
+    return { artist: parts[idx] || '', album: parts[idx + 1] || '' };
+}
+
+function isVisitorDataFresh() {
+    return cachedVisitorData && (Date.now() - cachedVisitorDataAt) < VISITOR_DATA_TTL_MS;
+}
+
+async function getVisitorData() {
+    if (isVisitorDataFresh()) return cachedVisitorData;
+
+    try {
+        const response = await fetch(YTM_BASE + '/youtubei/v1/visitor_id?key=' + YTM_API_KEY, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: { client: WEB_REMIX_CONTEXT } }),
+        });
+
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+
+        const data = await response.json();
+        if (data?.responseContext?.visitorData) {
+            cachedVisitorData = data.responseContext.visitorData;
+            cachedVisitorDataAt = Date.now();
+        }
+    } catch (e) {
+        console.log(LOG_PREFIX, 'visitorData refresh failed:', e.message);
+    }
+
+    return cachedVisitorData;
+}
+
+function getVideoId(renderer) {
+    const direct =
+        renderer?.playlistItemData?.videoId ||
+        renderer?.overlay?.musicItemThumbnailOverlayRenderer?.content
+            ?.musicPlayButtonRenderer?.playNavigationEndpoint
+            ?.watchEndpoint?.videoId;
+
+    if (direct) return direct;
+
+    const match = JSON.stringify(renderer || {}).match(/"videoId":"([^"]+)"/);
+    return match ? match[1] : '';
+}
+
+function getTitle(renderer) {
+    return renderer?.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer
+        ?.text?.runs?.map(t => t.text).join('') || '';
+}
+
+async function searchTracks(query, limit = 20) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'Origin': YTM_BASE,
+        'Referer': YTM_BASE + '/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    };
+
+    const response = await fetch(YTM_BASE + '/youtubei/v1/search?key=' + YTM_API_KEY, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            context: { client: WEB_REMIX_CONTEXT },
+            query,
+            params: 'EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D',
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error(LOG_PREFIX + ' Search failed: HTTP ' + response.status);
+    }
+
+    const data = await response.json();
+
+    if (data?.responseContext?.visitorData) {
+        cachedVisitorData = data.responseContext.visitorData;
+        cachedVisitorDataAt = Date.now();
+    }
+
+    const tracks = [];
+    const sections =
+        data?.contents?.tabbedSearchResultsRenderer?.tabs?.[0]
+            ?.tabRenderer?.content?.sectionListRenderer?.contents || [];
+
+    for (const section of sections) {
+        const shelf = section.musicShelfRenderer;
+        if (!shelf) continue;
+
+        for (const item of (shelf.contents || [])) {
+            if (tracks.length >= limit) break;
+
+            const renderer = item.musicResponsiveListItemRenderer;
+            if (!renderer) continue;
+
+            const videoId = getVideoId(renderer);
+            if (!videoId) continue;
+
+            const infoRuns =
+                renderer.flexColumns?.[1]?.musicResponsiveListItemFlexColumnRenderer
+                    ?.text?.runs || [];
+            const info = parseInfoRuns(infoRuns);
+            const durationText =
+                renderer.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer
+                    ?.text?.runs?.[0]?.text || '';
+            const thumbs =
+                renderer.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+
+            tracks.push({
+                id: videoId,
+                title: getTitle(renderer),
+                artist: info.artist,
+                album: info.album,
+                duration: parseDuration(durationText),
+                albumCover: bestThumbnail(thumbs),
+            });
+        }
+    }
+
+    return { tracks, total: tracks.length };
+}
+
+async function fetchPlayerData(trackId) {
+    const visitorData = await getVisitorData();
+    const client = Object.assign({}, IOS_CONTEXT);
+    if (visitorData) client.visitorData = visitorData;
+
+    const response = await fetch(YTM_BASE + '/youtubei/v1/player?prettyPrint=false&key=' + YTM_API_KEY, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'com.google.ios.youtube/20.22.1 (iPhone16,2; U; CPU iOS 18_5 like Mac OS X)',
+        },
+        body: JSON.stringify({
+            context: { client },
+            videoId: trackId,
+            contentCheckOk: true,
+            racyCheckOk: true,
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error(LOG_PREFIX + ' Player failed: HTTP ' + response.status);
+    }
+
+    const data = await response.json();
+    const status = data?.playabilityStatus?.status;
+    console.log(LOG_PREFIX, 'Player status:', status, 'for', trackId);
+
+    if (status !== 'OK') {
+        cachedVisitorData = null;
+        cachedVisitorDataAt = 0;
+        throw new Error(LOG_PREFIX + ' Playback blocked: ' + (data?.playabilityStatus?.reason || status || 'unknown'));
+    }
+
+    return data.streamingData || {};
+}
+
+function pickAudioFormat(streamingData, quality) {
+    const adaptive = streamingData.adaptiveFormats || [];
+    const formats = adaptive
+        .filter(format => format.url && format.mimeType && format.mimeType.startsWith('audio/'))
+        .sort((a, b) => (a.bitrate || 0) - (b.bitrate || 0));
+
+    if (!formats.length) return null;
+
+    const mp4Formats = formats.filter(format => format.mimeType.startsWith('audio/mp4'));
+    const candidates = mp4Formats.length ? mp4Formats : formats;
+
+    if (quality === QUALITY.LOW) return candidates[0];
+    return candidates[candidates.length - 1];
+}
+
+async function resolveDirectAudio(trackId, quality) {
+    if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
+
+    const streamingData = await fetchPlayerData(trackId);
+    const picked = pickAudioFormat(streamingData, quality);
+
+    if (picked?.url) {
+        return {
+            url: picked.url,
+            mimeType: picked.mimeType || 'audio/mp4',
+            bitrate: picked.bitrate || 0,
+            isHls: false,
+        };
+    }
+
+    if (streamingData.hlsManifestUrl) {
+        return {
+            url: streamingData.hlsManifestUrl,
+            mimeType: 'application/vnd.apple.mpegurl',
+            bitrate: 0,
+            isHls: true,
+        };
+    }
+
+    throw new Error(LOG_PREFIX + ' No playable audio format found');
+}
+
+async function getTrackStreamUrl(trackId, preferredQuality, context) {
+    const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
+    const media = await resolveDirectAudio(trackId, quality);
+
+    return {
+        streamUrl: media.url,
+        streamType: media.isHls ? 'hls' : 'direct',
+        mimeType: media.mimeType,
+        track: {
+            id: trackId,
+            audioQuality: quality,
+            bitrate: media.bitrate,
+        },
+    };
+}
+
+async function getTrackDownloadUrl(trackId, preferredQuality, context) {
+    const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
+    const media = await resolveDirectAudio(trackId, quality);
+
+    if (media.isHls) {
+        throw new Error(LOG_PREFIX + ' Download requires a direct audio URL');
+    }
+
+    return {
+        downloadUrl: media.url,
+        streamUrl: media.url,
+        mimeType: media.mimeType,
+        fileName: trackId + '.m4a',
+        track: {
+            id: trackId,
+            audioQuality: quality,
+            bitrate: media.bitrate,
+        },
+    };
+}
+
+async function getAlbum(albumId) {
+    const response = await fetch(YTM_BASE + '/youtubei/v1/browse?key=' + YTM_API_KEY, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Origin': YTM_BASE,
+            'Referer': YTM_BASE + '/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        },
+        body: JSON.stringify({
+            context: { client: WEB_REMIX_CONTEXT },
+            browseId: albumId,
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error(LOG_PREFIX + ' Album fetch failed: HTTP ' + response.status);
+    }
+
+    const data = await response.json();
+
+    if (data?.responseContext?.visitorData) {
+        cachedVisitorData = data.responseContext.visitorData;
+        cachedVisitorDataAt = Date.now();
+    }
+
+    const header =
+        data?.header?.musicImmersiveHeaderRenderer ||
+        data?.header?.musicDetailHeaderRenderer || {};
+    const albumTitle = header?.title?.runs?.[0]?.text || '';
+    let albumArtist = '';
+
+    if (header?.subtitle?.runs) {
+        for (const run of header.subtitle.runs) {
+            if (run.navigationEndpoint?.browseEndpoint) {
+                albumArtist = run.text;
+                break;
+            }
+        }
+    }
+
+    const albumCover = bestThumbnail(
+        header?.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || []
+    );
+
+    const contents =
+        data?.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]
+            ?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]
+            ?.musicShelfRenderer?.contents || [];
+
+    const tracks = contents
+        .filter(c => c.musicResponsiveListItemRenderer)
+        .map(c => {
+            const renderer = c.musicResponsiveListItemRenderer;
+            const videoId = getVideoId(renderer);
+            if (!videoId) return null;
+
+            return {
+                id: videoId,
+                title: getTitle(renderer),
+                artist: albumArtist,
+                album: albumTitle,
+                duration: parseDuration(
+                    renderer.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer
+                        ?.text?.runs?.[0]?.text || ''
+                ),
+                albumCover,
+            };
+        })
+        .filter(Boolean);
+
+    return {
+        album: { id: albumId, title: albumTitle, artist: albumArtist, albumCover },
+        tracks,
+    };
+}
+
+return {
+    id: 'youtube-music-direct',
+    name: 'YouTube Music Direct',
+    author: 'nvmindl',
+    version: '4.3.0',
+    labels: ['YT Music', 'Audio', 'Download', 'Direct'],
+    description: 'YouTube Music search with fresh direct audio playback and download support.',
+
+    noPrefetch: true,
+    noStreamCache: true,
+
+    settings: {
+        quality: {
+            type: 'selector',
+            label: 'Audio Quality',
+            description: 'Select the preferred direct audio format.',
+            options: QUALITY_OPTIONS,
+            defaultValue: QUALITY.HIGH,
+        },
+    },
+
+    searchTracks,
+    getTrackStreamUrl,
+    getTrackDownloadUrl,
+    getAlbum,
+};

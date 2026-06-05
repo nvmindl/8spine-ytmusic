@@ -1,35 +1,38 @@
 {
   "category:modules": [
     {
-      "id": "youtube-music",
-      "name": "YOUTUBE MUSIC",
-      "pkg": "com.8spine.module.youtube.music",
-      "file": "youtubeMusic.8spine",
-      "download": "modules/youtubeMusic.8spine",
-      "version": "v2.0.0",
-      "code": 200,
+      "id": "youtube-music-direct",
+      "name": "YOUTUBE MUSIC DIRECT",
+      "pkg": "com.8spine.module.youtube.music.direct",
+      "file": "youtubeMusicDirect.8spine",
+      "download": "modules/youtubeMusicDirect.8spine",
+      "version": "v4.3.0",
+      "code": 430,
       "type": "MODULE",
       "author": "nvmindl",
-      "description": "STREAM AUDIO FROM YOUTUBE MUSIC - VISITOR SESSION BOT BYPASS",
+      "description": "YOUTUBE MUSIC SEARCH WITH DIRECT AUDIO PLAYBACK AND DOWNLOAD SUPPORT",
       "tags": [
         "YT MUSIC",
         "AUDIO",
-        "SETTINGS"
+        "DOWNLOAD"
       ],
       "featured": false,
       "trusted": false,
       "nsfw": false,
-      "size": 10450,
+      "size": 12929,
       "lang": "all",
       "folder": "modules",
       "sources": [
         {
-          "name": "YOUTUBE MUSIC",
+          "name": "YOUTUBE MUSIC DIRECT",
           "lang": "all",
-          "id": "youtube-music",
+          "id": "youtube-music-direct",
           "baseUrl": "."
         }
       ]
     }
-  ]
+  ],
+  "category:debrid_modules": [],
+  "category:artworks": [],
+  "category:testing": []
 }
