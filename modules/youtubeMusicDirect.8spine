@@ -12,8 +12,12 @@ const YTM_BASE = 'https://music.youtube.com';
 const YTM_API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
 
 const VISITOR_DATA_TTL_MS = 20 * 60 * 1000;
+const MEDIA_CACHE_TTL_MS = 45 * 60 * 1000;
+const PREFETCH_LIMIT = 4;
 let cachedVisitorData = null;
 let cachedVisitorDataAt = 0;
+const mediaCache = {};
+const mediaInflight = {};
 
 const WEB_REMIX_CONTEXT = {
     clientName: 'WEB_REMIX',
@@ -103,6 +107,47 @@ function parseInfoRuns(runs) {
 
 function isVisitorDataFresh() {
     return cachedVisitorData && (Date.now() - cachedVisitorDataAt) < VISITOR_DATA_TTL_MS;
+}
+
+function cacheKey(kind, trackId, quality) {
+    return kind + ':' + trackId + ':' + (quality || '');
+}
+
+function mediaExpiresAt(url) {
+    const match = String(url || '').match(/[?&]expire=(\d+)/);
+    const defaultExpiry = Date.now() + MEDIA_CACHE_TTL_MS;
+    if (!match) return defaultExpiry;
+
+    const urlExpiry = Number(match[1]) * 1000 - 60 * 1000;
+    return Math.min(defaultExpiry, urlExpiry);
+}
+
+function getCachedMedia(key) {
+    const cached = mediaCache[key];
+    if (!cached) return null;
+    if (cached.expiresAt > Date.now()) return cached.media;
+    delete mediaCache[key];
+    return null;
+}
+
+async function resolveCachedMedia(key, resolver) {
+    const cached = getCachedMedia(key);
+    if (cached) return cached;
+    if (mediaInflight[key]) return mediaInflight[key];
+
+    mediaInflight[key] = resolver()
+        .then(media => {
+            mediaCache[key] = {
+                media,
+                expiresAt: mediaExpiresAt(media.url),
+            };
+            return media;
+        })
+        .finally(() => {
+            delete mediaInflight[key];
+        });
+
+    return mediaInflight[key];
 }
 
 async function getVisitorData() {
@@ -212,8 +257,14 @@ async function searchTracks(query, limit = 20) {
                 duration: parseDuration(durationText),
                 albumCover: bestThumbnail(thumbs),
             });
+
+            if (tracks.length === 1) {
+                prewarmPlaybackMedia(tracks);
+            }
         }
     }
+
+    prewarmPlaybackMedia(tracks);
 
     return { tracks, total: tracks.length };
 }
@@ -343,9 +394,44 @@ async function resolvePlaybackMedia(trackId, quality) {
     return resolveDirectAudio(trackId, quality);
 }
 
+function resolveCachedPlaybackMedia(trackId, quality) {
+    return resolveCachedMedia(
+        cacheKey('playback', trackId, quality),
+        () => resolvePlaybackMedia(trackId, quality)
+    );
+}
+
+function resolveCachedDirectAudio(trackId, quality) {
+    return resolveCachedMedia(
+        cacheKey('download', trackId, quality),
+        () => resolveDirectAudio(trackId, quality)
+    );
+}
+
+function prewarmPlaybackMedia(tracks) {
+    const items = (tracks || [])
+        .slice(0, PREFETCH_LIMIT)
+        .filter(track => track?.id);
+
+    prewarmPlaybackAt(items, 0);
+}
+
+function prewarmPlaybackAt(items, index) {
+    const track = items[index];
+    if (!track) return;
+
+    resolveCachedPlaybackMedia(track.id, QUALITY.HIGH)
+        .catch(e => {
+            console.log(LOG_PREFIX, 'prewarm failed:', track.id, e.message);
+        })
+        .finally(() => {
+            prewarmPlaybackAt(items, index + 1);
+        });
+}
+
 async function getTrackStreamUrl(trackId, preferredQuality, context) {
     const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
-    const media = await resolvePlaybackMedia(trackId, quality);
+    const media = await resolveCachedPlaybackMedia(trackId, quality);
 
     return {
         streamUrl: media.url,
@@ -361,7 +447,7 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
 
 async function getTrackDownloadUrl(trackId, preferredQuality, context) {
     const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
-    const media = await resolveDirectAudio(trackId, quality);
+    const media = await resolveCachedDirectAudio(trackId, quality);
 
     if (media.isHls) {
         throw new Error(LOG_PREFIX + ' Download requires a direct audio URL');
@@ -461,11 +547,10 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.3.1',
+    version: '4.3.2',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
-    noPrefetch: true,
     noStreamCache: true,
 
     settings: {
