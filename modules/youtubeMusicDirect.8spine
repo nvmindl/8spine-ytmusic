@@ -33,6 +33,19 @@ const IOS_CONTEXT = {
     gl: 'US',
 };
 
+const ANDROID_CONTEXT = {
+    clientName: 'ANDROID',
+    clientVersion: '20.22.36',
+    androidSdkVersion: 35,
+    osName: 'Android',
+    osVersion: '15',
+    hl: 'en',
+    gl: 'US',
+};
+
+const IOS_USER_AGENT = 'com.google.ios.youtube/20.22.1 (iPhone16,2; U; CPU iOS 18_5 like Mac OS X)';
+const ANDROID_USER_AGENT = 'com.google.android.youtube/20.22.36 (Linux; U; Android 15)';
+
 const QUALITY = {
     LOW: 'LOW',
     HIGH: 'HIGH',
@@ -205,16 +218,16 @@ async function searchTracks(query, limit = 20) {
     return { tracks, total: tracks.length };
 }
 
-async function fetchPlayerData(trackId) {
+async function fetchPlayerData(trackId, baseClient, userAgent) {
     const visitorData = await getVisitorData();
-    const client = Object.assign({}, IOS_CONTEXT);
+    const client = Object.assign({}, baseClient);
     if (visitorData) client.visitorData = visitorData;
 
     const response = await fetch(YTM_BASE + '/youtubei/v1/player?prettyPrint=false&key=' + YTM_API_KEY, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'User-Agent': 'com.google.ios.youtube/20.22.1 (iPhone16,2; U; CPU iOS 18_5 like Mac OS X)',
+            'User-Agent': userAgent,
         },
         body: JSON.stringify({
             context: { client },
@@ -241,6 +254,16 @@ async function fetchPlayerData(trackId) {
     return data.streamingData || {};
 }
 
+function pickProgressiveFormat(streamingData) {
+    const formats = streamingData.formats || [];
+    return formats.find(format =>
+        format.url &&
+        format.mimeType &&
+        format.mimeType.startsWith('video/mp4') &&
+        format.mimeType.includes('mp4a')
+    ) || null;
+}
+
 function pickAudioFormat(streamingData, quality) {
     const adaptive = streamingData.adaptiveFormats || [];
     const formats = adaptive
@@ -259,7 +282,7 @@ function pickAudioFormat(streamingData, quality) {
 async function resolveDirectAudio(trackId, quality) {
     if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
 
-    const streamingData = await fetchPlayerData(trackId);
+    const streamingData = await fetchPlayerData(trackId, IOS_CONTEXT, IOS_USER_AGENT);
     const picked = pickAudioFormat(streamingData, quality);
 
     if (picked?.url) {
@@ -283,9 +306,46 @@ async function resolveDirectAudio(trackId, quality) {
     throw new Error(LOG_PREFIX + ' No playable audio format found');
 }
 
+async function resolvePlaybackMedia(trackId, quality) {
+    if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
+
+    const streamingData = await fetchPlayerData(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
+    const progressive = pickProgressiveFormat(streamingData);
+
+    if (progressive?.url) {
+        return {
+            url: progressive.url,
+            mimeType: progressive.mimeType || 'video/mp4',
+            bitrate: progressive.bitrate || 0,
+            isHls: false,
+        };
+    }
+
+    const picked = pickAudioFormat(streamingData, quality);
+    if (picked?.url) {
+        return {
+            url: picked.url,
+            mimeType: picked.mimeType || 'audio/mp4',
+            bitrate: picked.bitrate || 0,
+            isHls: false,
+        };
+    }
+
+    if (streamingData.hlsManifestUrl) {
+        return {
+            url: streamingData.hlsManifestUrl,
+            mimeType: 'application/vnd.apple.mpegurl',
+            bitrate: 0,
+            isHls: true,
+        };
+    }
+
+    return resolveDirectAudio(trackId, quality);
+}
+
 async function getTrackStreamUrl(trackId, preferredQuality, context) {
     const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
-    const media = await resolveDirectAudio(trackId, quality);
+    const media = await resolvePlaybackMedia(trackId, quality);
 
     return {
         streamUrl: media.url,
@@ -401,7 +461,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.3.0',
+    version: '4.3.1',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
