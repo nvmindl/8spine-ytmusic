@@ -383,7 +383,7 @@ async function resolvePlaybackMedia(trackId, quality) {
     if (progressive?.url) {
         return {
             url: progressive.url,
-            mimeType: progressive.mimeType || 'video/mp4',
+            mimeType: 'audio/mp4',
             bitrate: progressive.bitrate || 0,
             isHls: false,
         };
@@ -565,7 +565,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.4.2',
+    version: '4.4.3',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
