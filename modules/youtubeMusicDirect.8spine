@@ -24,7 +24,7 @@ const WEB_REMIX_CONTEXT = {
     clientName: 'WEB_REMIX',
     clientVersion: '1.20260304.03.00',
     hl: 'en',
-    gl: 'SA',
+    gl: 'US',
 };
 
 const IOS_CONTEXT = {
@@ -35,7 +35,7 @@ const IOS_CONTEXT = {
     osName: 'iPhone',
     osVersion: '18.5.0.22F76',
     hl: 'en',
-    gl: 'SA',
+    gl: 'US',
 };
 
 const ANDROID_CONTEXT = {
@@ -45,7 +45,7 @@ const ANDROID_CONTEXT = {
     osName: 'Android',
     osVersion: '15',
     hl: 'en',
-    gl: 'SA',
+    gl: 'US',
 };
 
 const IOS_USER_AGENT = 'com.google.ios.youtube/20.22.1 (iPhone16,2; U; CPU iOS 18_5 like Mac OS X)';
@@ -554,7 +554,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.3.9',
+    version: '4.4.0',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
