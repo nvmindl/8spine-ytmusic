@@ -13,7 +13,7 @@ const YTM_API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
 
 const VISITOR_DATA_TTL_MS = 20 * 60 * 1000;
 const MEDIA_CACHE_TTL_MS = 45 * 60 * 1000;
-const PREFETCH_LIMIT = 4;
+const PREFETCH_LIMIT = 8;
 let cachedVisitorData = null;
 let cachedVisitorDataAt = 0;
 const mediaCache = {};
@@ -413,20 +413,14 @@ function prewarmPlaybackMedia(tracks) {
         .slice(0, PREFETCH_LIMIT)
         .filter(track => track?.id);
 
-    prewarmPlaybackAt(items, 0);
-}
-
-function prewarmPlaybackAt(items, index) {
-    const track = items[index];
-    if (!track) return;
-
-    resolveCachedPlaybackMedia(track.id, QUALITY.HIGH)
-        .catch(e => {
-            console.log(LOG_PREFIX, 'prewarm failed:', track.id, e.message);
-        })
-        .finally(() => {
-            prewarmPlaybackAt(items, index + 1);
-        });
+    Promise.allSettled(
+        items.map(track =>
+            resolveCachedPlaybackMedia(track.id, QUALITY.HIGH)
+                .catch(e => {
+                    console.log(LOG_PREFIX, 'prewarm failed:', track.id, e.message);
+                })
+        )
+    );
 }
 
 async function getTrackStreamUrl(trackId, preferredQuality, context) {
@@ -545,7 +539,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.3.3',
+    version: '4.3.4',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
