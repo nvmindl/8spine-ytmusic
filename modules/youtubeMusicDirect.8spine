@@ -447,17 +447,15 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
 
 async function getTrackDownloadUrl(trackId, preferredQuality, context) {
     const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
-    const media = await resolveCachedDirectAudio(trackId, quality);
-
-    if (media.isHls) {
-        throw new Error(LOG_PREFIX + ' Download requires a direct audio URL');
-    }
+    // Adaptive audio URLs (iOS/Android) return 403 without a po_token.
+    // The Android progressive video/mp4 is the only format that works without one.
+    const media = await resolveCachedPlaybackMedia(trackId, quality);
 
     return {
         downloadUrl: media.url,
         streamUrl: media.url,
         mimeType: media.mimeType,
-        fileName: trackId + '.m4a',
+        fileName: trackId + '.mp4',
         track: {
             id: trackId,
             audioQuality: quality,
@@ -547,7 +545,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.3.2',
+    version: '4.3.3',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
