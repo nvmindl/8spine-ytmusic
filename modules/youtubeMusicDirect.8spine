@@ -377,33 +377,6 @@ async function resolveDirectAudio(trackId, quality) {
 async function resolvePlaybackMedia(trackId, quality) {
     if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
 
-    // 1. Try iOS player data first (preferred for playback as HLS is pure audio and doesn't require po_token)
-    try {
-        const streamingData = await fetchPlayerData(trackId, IOS_CONTEXT, IOS_USER_AGENT);
-
-        if (streamingData.hlsManifestUrl) {
-            return {
-                url: streamingData.hlsManifestUrl,
-                mimeType: 'application/vnd.apple.mpegurl',
-                bitrate: 0,
-                isHls: true,
-            };
-        }
-
-        const picked = pickAudioFormat(streamingData, quality);
-        if (picked?.url) {
-            return {
-                url: picked.url,
-                mimeType: picked.mimeType || 'audio/mp4',
-                bitrate: picked.bitrate || 0,
-                isHls: false,
-            };
-        }
-    } catch (e) {
-        console.log(LOG_PREFIX, 'iOS playback resolution failed, trying Android progressive fallback:', e.message);
-    }
-
-    // 2. Fall back to Android progressive format (requires no po_token, but has a video track)
     const streamingData = await fetchPlayerData(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
     const progressive = pickProgressiveFormat(streamingData);
 
@@ -435,27 +408,6 @@ async function resolvePlaybackMedia(trackId, quality) {
         };
     }
 
-    throw new Error(LOG_PREFIX + ' No playable format found');
-}
-
-async function resolveDownloadMedia(trackId, quality) {
-    if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
-
-    // For download, we need a single file format (not HLS).
-    // Adaptive audio URLs return 403 without a po_token, so we prefer the Android progressive format.
-    const streamingData = await fetchPlayerData(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
-    const progressive = pickProgressiveFormat(streamingData);
-
-    if (progressive?.url) {
-        return {
-            url: progressive.url,
-            mimeType: progressive.mimeType || 'video/mp4',
-            bitrate: progressive.bitrate || 0,
-            isHls: false,
-        };
-    }
-
-    // Fallback to iOS direct audio if progressive fails
     return resolveDirectAudio(trackId, quality);
 }
 
@@ -469,7 +421,7 @@ function resolveCachedPlaybackMedia(trackId, quality) {
 function resolveCachedDirectAudio(trackId, quality) {
     return resolveCachedMedia(
         cacheKey('download', trackId, quality),
-        () => resolveDownloadMedia(trackId, quality)
+        () => resolveDirectAudio(trackId, quality)
     );
 }
 
@@ -613,7 +565,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.4.4',
+    version: '4.4.5',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
