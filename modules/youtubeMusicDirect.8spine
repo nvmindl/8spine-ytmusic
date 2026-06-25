@@ -159,15 +159,11 @@ async function getVisitorData() {
     if (isVisitorDataFresh()) return cachedVisitorData;
 
     try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 4000);
         const response = await fetch(YTM_BASE + '/youtubei/v1/visitor_id?key=' + YTM_API_KEY, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ context: { client: WEB_REMIX_CONTEXT } }),
-            signal: controller.signal,
         });
-        clearTimeout(timer);
 
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
@@ -192,14 +188,7 @@ function getVideoId(renderer) {
 
     if (direct) return direct;
 
-    const str = JSON.stringify(renderer || {});
-
-    // Prefer watchEndpoint.videoId — this is always the playback ID
-    const watchMatch = str.match(/"watchEndpoint":\{"videoId":"([^"]+)"/);
-    if (watchMatch) return watchMatch[1];
-
-    // Last resort: first videoId found
-    const match = str.match(/"videoId":"([^"]+)"/);
+    const match = JSON.stringify(renderer || {}).match(/"videoId":"([^"]+)"/);
     return match ? match[1] : '';
 }
 
@@ -565,7 +554,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.4.8',
+    version: '4.4.9',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
