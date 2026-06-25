@@ -18,6 +18,7 @@ let cachedVisitorData = null;
 let cachedVisitorDataAt = 0;
 const mediaCache = {};
 const mediaInflight = {};
+let lastSearchedTracks = [];
 
 const WEB_REMIX_CONTEXT = {
     clientName: 'WEB_REMIX',
@@ -265,6 +266,7 @@ async function searchTracks(query, limit = 20) {
     }
 
     prewarmPlaybackMedia(tracks);
+    lastSearchedTracks = tracks;
 
     return { tracks, total: tracks.length };
 }
@@ -427,6 +429,12 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
     const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
     const media = await resolveCachedPlaybackMedia(trackId, quality);
 
+    // Prewarm the next few tracks from the last search so skipping stays instant
+    const idx = lastSearchedTracks.findIndex(t => t.id === trackId);
+    if (idx !== -1) {
+        prewarmPlaybackMedia(lastSearchedTracks.slice(idx + 1, idx + 4));
+    }
+
     return {
         streamUrl: media.url,
         streamType: media.isHls ? 'hls' : 'direct',
@@ -539,7 +547,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.3.4',
+    version: '4.3.5',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
