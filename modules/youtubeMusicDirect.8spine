@@ -380,15 +380,7 @@ async function resolvePlaybackMedia(trackId, quality) {
     // For playback, we must use pure audio formats (HLS or adaptive audio) from iOS client to avoid video-track pause/unpause issues.
     const streamingData = await fetchPlayerData(trackId, IOS_CONTEXT, IOS_USER_AGENT);
 
-    if (streamingData.hlsManifestUrl) {
-        return {
-            url: streamingData.hlsManifestUrl,
-            mimeType: 'application/vnd.apple.mpegurl',
-            bitrate: 0,
-            isHls: true,
-        };
-    }
-
+    // 1. Try direct adaptive audio format first (highest quality, e.g. 256kbps AAC)
     const picked = pickAudioFormat(streamingData, quality);
     if (picked?.url) {
         return {
@@ -396,6 +388,16 @@ async function resolvePlaybackMedia(trackId, quality) {
             mimeType: picked.mimeType || 'audio/mp4',
             bitrate: picked.bitrate || 0,
             isHls: false,
+        };
+    }
+
+    // 2. Fall back to HLS manifest (128kbps AAC)
+    if (streamingData.hlsManifestUrl) {
+        return {
+            url: streamingData.hlsManifestUrl,
+            mimeType: 'application/vnd.apple.mpegurl',
+            bitrate: 0,
+            isHls: true,
         };
     }
 
@@ -577,7 +579,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.4.6',
+    version: '4.4.7',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
