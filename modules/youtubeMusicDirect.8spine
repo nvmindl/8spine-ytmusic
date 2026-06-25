@@ -537,6 +537,9 @@ async function getAlbum(albumId) {
         })
         .filter(Boolean);
 
+    prewarmPlaybackMedia(tracks);
+    lastSearchedTracks = tracks;
+
     return {
         album: { id: albumId, title: albumTitle, artist: albumArtist, albumCover },
         tracks,
@@ -547,7 +550,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.3.5',
+    version: '4.3.6',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
