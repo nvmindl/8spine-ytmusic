@@ -159,11 +159,15 @@ async function getVisitorData() {
     if (isVisitorDataFresh()) return cachedVisitorData;
 
     try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4000);
         const response = await fetch(YTM_BASE + '/youtubei/v1/visitor_id?key=' + YTM_API_KEY, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ context: { client: WEB_REMIX_CONTEXT } }),
+            signal: controller.signal,
         });
+        clearTimeout(timer);
 
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
@@ -554,7 +558,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.4.0',
+    version: '4.4.1',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
