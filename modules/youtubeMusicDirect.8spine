@@ -13,7 +13,7 @@ const YTM_API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
 
 const VISITOR_DATA_TTL_MS = 20 * 60 * 1000;
 const MEDIA_CACHE_TTL_MS = 45 * 60 * 1000;
-const PREFETCH_LIMIT = 8;
+const PREFETCH_LIMIT = 0;
 let cachedVisitorData = null;
 let cachedVisitorDataAt = 0;
 const mediaCache = {};
@@ -565,7 +565,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '4.4.10',
+    version: '4.4.11',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
