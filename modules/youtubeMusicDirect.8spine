@@ -111,7 +111,7 @@ function parseInfoRuns(runs) {
 }
 
 function isVisitorDataFresh() {
-    return (Date.now() - cachedVisitorDataAt) < VISITOR_DATA_TTL_MS;
+    return cachedVisitorData && (Date.now() - cachedVisitorDataAt) < VISITOR_DATA_TTL_MS;
 }
 
 function cacheKey(kind, trackId, quality) {
@@ -156,12 +156,31 @@ async function resolveCachedMedia(key, resolver) {
 }
 
 async function getVisitorData() {
-    // Only return cached visitorData if it was obtained from search/browse.
-    // We completely bypass the slow visitor_id network fetch to eliminate song start slowness.
-    if (cachedVisitorData && (Date.now() - cachedVisitorDataAt) < VISITOR_DATA_TTL_MS) {
-        return cachedVisitorData;
+    if (isVisitorDataFresh()) return cachedVisitorData;
+
+    try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 1000);
+        const response = await fetch(YTM_BASE + '/youtubei/v1/visitor_id?key=' + YTM_API_KEY, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: { client: WEB_REMIX_CONTEXT } }),
+            signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+
+        const data = await response.json();
+        if (data?.responseContext?.visitorData) {
+            cachedVisitorData = data.responseContext.visitorData;
+        }
+    } catch (e) {
+        console.log(LOG_PREFIX, 'visitorData refresh failed:', e.message);
     }
-    return null;
+    
+    cachedVisitorDataAt = Date.now();
+    return cachedVisitorData;
 }
 
 function getVideoId(renderer) {
