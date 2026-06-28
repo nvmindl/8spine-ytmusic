@@ -137,9 +137,16 @@ function getCachedMedia(key) {
 
 async function resolveCachedMedia(key, resolver) {
     const cached = getCachedMedia(key);
-    if (cached) return cached;
-    if (mediaInflight[key]) return mediaInflight[key];
+    if (cached) {
+        console.log(LOG_PREFIX, 'Cache HIT for key:', key);
+        return cached;
+    }
+    if (mediaInflight[key]) {
+        console.log(LOG_PREFIX, 'Inflight HIT for key:', key);
+        return mediaInflight[key];
+    }
 
+    console.log(LOG_PREFIX, 'Cache MISS for key:', key, 'Resolving...');
     mediaInflight[key] = resolver()
         .then(media => {
             mediaCache[key] = {
@@ -624,7 +631,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '5.1',
+    version: '5.2',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
