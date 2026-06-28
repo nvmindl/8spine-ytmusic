@@ -393,10 +393,10 @@ async function resolvePlaybackMedia(trackId, quality, context) {
 
     // 1. Detect platform (iOS vs Android)
     const isiOS = 
+        (typeof navigator !== 'undefined' && navigator.platform && /iPhone|iPad|iPod|Mac/i.test(navigator.platform)) ||
         (context?.platform === 'ios') ||
         (context?.os === 'ios') ||
-        (typeof navigator !== 'undefined' && navigator.userAgent && /iPhone|iPad|iPod|Apple/i.test(navigator.userAgent)) ||
-        (typeof HermesInternal === 'undefined');
+        (typeof navigator !== 'undefined' && navigator.userAgent && /iPhone|iPad|iPod|Apple/i.test(navigator.userAgent));
 
     console.log(LOG_PREFIX, 'Resolving playback for:', trackId, 'isiOS:', isiOS);
 
@@ -697,7 +697,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '5.8',
+    version: '5.9',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
