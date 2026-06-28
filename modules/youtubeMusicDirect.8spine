@@ -377,6 +377,60 @@ async function resolveDirectAudio(trackId, quality) {
 async function resolvePlaybackMedia(trackId, quality) {
     if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
 
+    // 1. Try iOS HLS first for instant playback start
+    try {
+        const streamingData = await fetchPlayerData(trackId, IOS_CONTEXT, IOS_USER_AGENT);
+        if (streamingData.hlsManifestUrl) {
+            return {
+                url: streamingData.hlsManifestUrl,
+                mimeType: 'application/vnd.apple.mpegurl',
+                bitrate: 0,
+                isHls: true,
+            };
+        }
+    } catch (e) {
+        console.log(LOG_PREFIX, 'iOS playback resolution failed:', e.message);
+    }
+
+    // 2. Fallback to Android progressive MP4 if HLS is not available
+    const streamingData = await fetchPlayerData(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
+    const progressive = pickProgressiveFormat(streamingData);
+
+    if (progressive?.url) {
+        return {
+            url: progressive.url,
+            mimeType: progressive.mimeType || 'video/mp4',
+            bitrate: progressive.bitrate || 0,
+            isHls: false,
+        };
+    }
+
+    const picked = pickAudioFormat(streamingData, quality);
+    if (picked?.url) {
+        return {
+            url: picked.url,
+            mimeType: picked.mimeType || 'audio/mp4',
+            bitrate: picked.bitrate || 0,
+            isHls: false,
+        };
+    }
+
+    if (streamingData.hlsManifestUrl) {
+        return {
+            url: streamingData.hlsManifestUrl,
+            mimeType: 'application/vnd.apple.mpegurl',
+            bitrate: 0,
+            isHls: true,
+        };
+    }
+
+    return resolveDirectAudio(trackId, quality);
+}
+
+async function resolveDownloadMedia(trackId, quality) {
+    if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
+
+    // Downloads must use progressive MP4 to get a single file (not HLS playlist chunks)
     const streamingData = await fetchPlayerData(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
     const progressive = pickProgressiveFormat(streamingData);
 
@@ -415,6 +469,13 @@ function resolveCachedPlaybackMedia(trackId, quality) {
     return resolveCachedMedia(
         cacheKey('playback', trackId, quality),
         () => resolvePlaybackMedia(trackId, quality)
+    );
+}
+
+function resolveCachedDownloadMedia(trackId, quality) {
+    return resolveCachedMedia(
+        cacheKey('download_media', trackId, quality),
+        () => resolveDownloadMedia(trackId, quality)
     );
 }
 
@@ -464,15 +525,13 @@ async function getTrackStreamUrl(trackId, preferredQuality, context) {
 
 async function getTrackDownloadUrl(trackId, preferredQuality, context) {
     const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
-    // Adaptive audio URLs (iOS/Android) return 403 without a po_token.
-    // The Android progressive video/mp4 is the only format that works without one.
-    const media = await resolveCachedPlaybackMedia(trackId, quality);
+    const media = await resolveCachedDownloadMedia(trackId, quality);
 
     return {
         downloadUrl: media.url,
         streamUrl: media.url,
         mimeType: media.mimeType,
-        fileName: trackId + '.mp4',
+        fileName: trackId + (media.isHls ? '.m3u8' : '.mp4'),
         track: {
             id: trackId,
             audioQuality: quality,
