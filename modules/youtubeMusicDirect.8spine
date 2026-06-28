@@ -391,50 +391,109 @@ async function resolveDirectAudio(trackId, quality) {
 async function resolvePlaybackMedia(trackId, quality, context) {
     if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
 
-    // 1. Try Android progressive MP4 first (unthrottled, never 403s, resolved in 1 request (~250ms) for 99% of tracks)
-    try {
-        const androidData = await fetchPlayerResponse(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
-        const sd = androidData.streamingData || {};
-        const progressive = pickProgressiveFormat(sd);
-        if (progressive?.url) {
-            return {
-                url: progressive.url,
-                mimeType: progressive.mimeType || 'video/mp4',
-                bitrate: progressive.bitrate || 0,
-                isHls: false,
-            };
+    // 1. Detect platform (iOS vs Android)
+    const isiOS = 
+        (typeof navigator !== 'undefined' && navigator.platform && /iPhone|iPad|iPod|Mac/i.test(navigator.platform)) ||
+        (context?.platform === 'ios') ||
+        (context?.os === 'ios') ||
+        (typeof navigator !== 'undefined' && navigator.userAgent && /iPhone|iPad|iPod|Apple/i.test(navigator.userAgent));
+
+    console.log(LOG_PREFIX, 'Resolving playback for:', trackId, 'isiOS:', isiOS);
+
+    if (isiOS) {
+        // iOS Optimized Route (1 request for HLS/M4A, streams instantly on AVPlayer)
+        try {
+            const iosData = await fetchPlayerResponse(trackId, IOS_CONTEXT, IOS_USER_AGENT);
+            const sd = iosData.streamingData || {};
+            
+            // Try iOS HLS first (loads instantly, native, unthrottled)
+            if (sd.hlsManifestUrl) {
+                return {
+                    url: sd.hlsManifestUrl,
+                    mimeType: 'application/vnd.apple.mpegurl',
+                    bitrate: 0,
+                    isHls: true,
+                };
+            }
+
+            // Try iOS direct adaptive audio (M4A) - streams instantly without MOOV atom video buffering hangs
+            const picked = pickAudioFormat(sd, quality);
+            if (picked?.url) {
+                return {
+                    url: picked.url,
+                    mimeType: picked.mimeType || 'audio/mp4',
+                    bitrate: picked.bitrate || 0,
+                    isHls: false,
+                };
+            }
+        } catch (e) {
+            console.log(LOG_PREFIX, 'iOS primary fetch failed:', e.message);
         }
 
-        // Fallback to Android HLS if progressive is not found
-        if (sd.hlsManifestUrl) {
-            return {
-                url: sd.hlsManifestUrl,
-                mimeType: 'application/vnd.apple.mpegurl',
-                bitrate: 0,
-                isHls: true,
-            };
+        // Fallback to Android progressive MP4 on iOS only as last resort
+        try {
+            const androidData = await fetchPlayerResponse(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
+            const sd = androidData.streamingData || {};
+            const progressive = pickProgressiveFormat(sd);
+            if (progressive?.url) {
+                return {
+                    url: progressive.url,
+                    mimeType: progressive.mimeType || 'video/mp4',
+                    bitrate: progressive.bitrate || 0,
+                    isHls: false,
+                };
+            }
+        } catch (e) {
+            console.log(LOG_PREFIX, 'iOS fallback to Android progressive failed:', e.message);
         }
-    } catch (e) {
-        console.log(LOG_PREFIX, 'Android progressive fetch failed:', e.message);
+    } else {
+        // Android/WSA Optimized Route (1 request for progressive, avoids ExoPlayer 403 blocks)
+        try {
+            const androidData = await fetchPlayerResponse(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
+            const sd = androidData.streamingData || {};
+            
+            // Try Android progressive MP4 first (avoids ExoPlayer 403 blocks)
+            const progressive = pickProgressiveFormat(sd);
+            if (progressive?.url) {
+                return {
+                    url: progressive.url,
+                    mimeType: progressive.mimeType || 'video/mp4',
+                    bitrate: progressive.bitrate || 0,
+                    isHls: false,
+                };
+            }
+
+            // Try Android HLS
+            if (sd.hlsManifestUrl) {
+                return {
+                    url: sd.hlsManifestUrl,
+                    mimeType: 'application/vnd.apple.mpegurl',
+                    bitrate: 0,
+                    isHls: true,
+                };
+            }
+        } catch (e) {
+            console.log(LOG_PREFIX, 'Android primary fetch failed:', e.message);
+        }
+
+        // Fallback to iOS HLS on Android if Android failed
+        try {
+            const iosData = await fetchPlayerResponse(trackId, IOS_CONTEXT, IOS_USER_AGENT);
+            const sd = iosData.streamingData || {};
+            if (sd.hlsManifestUrl) {
+                return {
+                    url: sd.hlsManifestUrl,
+                    mimeType: 'application/vnd.apple.mpegurl',
+                    bitrate: 0,
+                    isHls: true,
+                };
+            }
+        } catch (e) {
+            console.log(LOG_PREFIX, 'Android fallback to iOS HLS failed:', e.message);
+        }
     }
 
-    // 2. Fallback to iOS player (HLS / direct) as a secondary option
-    try {
-        const iosData = await fetchPlayerResponse(trackId, IOS_CONTEXT, IOS_USER_AGENT);
-        const sdIos = iosData.streamingData || {};
-        if (sdIos.hlsManifestUrl) {
-            return {
-                url: sdIos.hlsManifestUrl,
-                mimeType: 'application/vnd.apple.mpegurl',
-                bitrate: 0,
-                isHls: true,
-            };
-        }
-    } catch (e) {
-        console.log(LOG_PREFIX, 'iOS fallback fetch failed:', e.message);
-    }
-
-    // Ultimate backup (uses iOS direct audio or HLS)
+    // Ultimate fallback
     return resolveDirectAudio(trackId, quality);
 }
 
@@ -635,7 +694,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '6.1',
+    version: '6.2',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
