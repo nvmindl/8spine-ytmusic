@@ -565,7 +565,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '5.0',
+    version: '4.4.12',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
