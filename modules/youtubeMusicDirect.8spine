@@ -13,13 +13,11 @@ const YTM_API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
 
 const VISITOR_DATA_TTL_MS = 20 * 60 * 1000;
 const MEDIA_CACHE_TTL_MS = 45 * 60 * 1000;
-const PREFETCH_LIMIT = 3;
 let cachedVisitorData = null;
 let cachedVisitorDataAt = 0;
 const mediaCache = {};
 const mediaInflight = {};
 let lastSearchedTracks = [];
-let prewarmTimeoutId = null;
 
 const WEB_REMIX_CONTEXT = {
     clientName: 'WEB_REMIX',
@@ -281,14 +279,9 @@ async function searchTracks(query, limit = 20) {
                 duration: parseDuration(durationText),
                 albumCover: bestThumbnail(thumbs),
             });
-
-            if (tracks.length === 1) {
-                prewarmPlaybackMedia(tracks);
-            }
         }
     }
 
-    prewarmPlaybackMedia(tracks);
     lastSearchedTracks = tracks;
 
     return { tracks, total: tracks.length };
@@ -578,42 +571,9 @@ function resolveCachedDirectAudio(trackId, quality) {
     );
 }
 
-function prewarmPlaybackMedia(tracks) {
-    const items = (tracks || [])
-        .slice(0, PREFETCH_LIMIT)
-        .filter(track => track?.id);
-
-    Promise.allSettled(
-        items.map(track =>
-            resolveCachedPlaybackMedia(track.id, QUALITY.HIGH)
-                .catch(e => {
-                    console.log(LOG_PREFIX, 'prewarm failed:', track.id, e.message);
-                })
-        )
-    );
-}
-
 async function getTrackStreamUrl(trackId, preferredQuality, context) {
     const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
     const media = await resolveCachedPlaybackMedia(trackId, quality, context);
-
-    // Cancel any pending prewarm from a rapid skip
-    if (prewarmTimeoutId) {
-        clearTimeout(prewarmTimeoutId);
-        prewarmTimeoutId = null;
-    }
-
-    // Delay prewarming the next track by 2 seconds to avoid choking network on skips
-    const idx = lastSearchedTracks.findIndex(t => t.id === trackId);
-    if (idx !== -1 && idx + 1 < lastSearchedTracks.length) {
-        const nextTrack = lastSearchedTracks[idx + 1];
-        prewarmTimeoutId = setTimeout(() => {
-            resolveCachedPlaybackMedia(nextTrack.id, QUALITY.HIGH, context)
-                .catch(e => {
-                    console.log(LOG_PREFIX, 'prewarm failed:', nextTrack.id, e.message);
-                });
-        }, 2000);
-    }
 
     return {
         streamUrl: media.url,
@@ -715,7 +675,6 @@ async function getAlbum(albumId) {
         })
         .filter(Boolean);
 
-    prewarmPlaybackMedia(tracks);
     lastSearchedTracks = tracks;
 
     return {
@@ -728,7 +687,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '6.5',
+    version: '6.6',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
