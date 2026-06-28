@@ -400,10 +400,14 @@ async function resolvePlaybackMedia(trackId, quality, context) {
         isiOS = true;
     } else {
         // Query React Native Native Bridge / TurboModule Registry for PlatformConstants
-        const platformConstants = 
-            global.PlatformConstants || 
-            global.nativeModuleProxy?.PlatformConstants || 
-            (typeof global.__turboModuleProxy === 'function' && global.__turboModuleProxy('PlatformConstants'));
+        let platformConstants = global.PlatformConstants || (global.nativeModuleProxy && global.nativeModuleProxy.PlatformConstants);
+        if (!platformConstants && typeof global.__turboModuleProxy === 'function') {
+            try {
+                platformConstants = global.__turboModuleProxy('PlatformConstants');
+            } catch (e) {
+                // Ignore registry lookups if not registered
+            }
+        }
 
         if (platformConstants) {
             const sysName = platformConstants.systemName || '';
@@ -724,7 +728,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '6.4',
+    version: '6.5',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
