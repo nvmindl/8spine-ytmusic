@@ -135,6 +135,28 @@ function getCachedMedia(key) {
     return null;
 }
 
+async function getTrackStreamUrl(trackId, preferredQuality, context) {
+    const quality = context?.settings?.quality?.value || preferredQuality || QUALITY.HIGH;
+
+    console.log(LOG_PREFIX, 'Getting stream for:', trackId, 'quality:', quality);
+    console.log(LOG_PREFIX, 'Context keys:', Object.keys(context || {}));
+    console.log(LOG_PREFIX, 'Context JSON:', JSON.stringify(context || {}));
+    console.log(LOG_PREFIX, 'User agent:', typeof navigator !== 'undefined' ? navigator.userAgent : 'no-navigator');
+
+    const cacheKey = `playback:${trackId}:${quality}`;
+    const cached = playbackCache.get(cacheKey);
+    if (cached) {
+        console.log(LOG_PREFIX, 'Cache HIT for key:', cacheKey);
+        return cached;
+    }
+
+    console.log(LOG_PREFIX, 'Cache MISS for key:', cacheKey, 'Resolving...');
+    const result = await resolvePlaybackMedia(trackId, quality);
+    
+    playbackCache.set(cacheKey, result);
+    return result;
+}
+
 async function resolveCachedMedia(key, resolver) {
     const cached = getCachedMedia(key);
     if (cached) {
@@ -635,7 +657,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '5.5',
+    version: '5.6',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
