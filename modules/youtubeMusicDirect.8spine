@@ -293,7 +293,7 @@ async function searchTracks(query, limit = 20) {
     return { tracks, total: tracks.length };
 }
 
-async function fetchPlayerData(trackId, baseClient, userAgent) {
+async function fetchPlayerResponse(trackId, baseClient, userAgent) {
     const visitorData = await getVisitorData();
     const client = Object.assign({}, baseClient);
     if (visitorData) client.visitorData = visitorData;
@@ -326,6 +326,11 @@ async function fetchPlayerData(trackId, baseClient, userAgent) {
         throw new Error(LOG_PREFIX + ' Playback blocked: ' + (data?.playabilityStatus?.reason || status || 'unknown'));
     }
 
+    return data;
+}
+
+async function fetchPlayerData(trackId, baseClient, userAgent) {
+    const data = await fetchPlayerResponse(trackId, baseClient, userAgent);
     return data.streamingData || {};
 }
 
@@ -384,10 +389,10 @@ async function resolveDirectAudio(trackId, quality) {
 async function resolvePlaybackMedia(trackId, quality) {
     if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
 
-    // 1. Fetch iOS player data first
+    // 1. Fetch iOS player response first
     let iosData = null;
     try {
-        iosData = await fetchPlayerData(trackId, IOS_CONTEXT, IOS_USER_AGENT);
+        iosData = await fetchPlayerResponse(trackId, IOS_CONTEXT, IOS_USER_AGENT);
     } catch (e) {
         console.log(LOG_PREFIX, 'iOS player fetch failed:', e.message);
     }
@@ -427,7 +432,8 @@ async function resolvePlaybackMedia(trackId, quality) {
     }
 
     // 4. Fallback to Android progressive MP4 if HLS/iOS direct audio is not available
-    const streamingData = await fetchPlayerData(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
+    const androidData = await fetchPlayerResponse(trackId, ANDROID_CONTEXT, ANDROID_USER_AGENT);
+    const streamingData = androidData.streamingData || {};
     const progressive = pickProgressiveFormat(streamingData);
 
     if (progressive?.url) {
@@ -658,7 +664,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '5.3',
+    version: '5.4',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
