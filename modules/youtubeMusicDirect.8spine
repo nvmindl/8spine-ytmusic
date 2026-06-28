@@ -392,12 +392,29 @@ async function resolveDirectAudio(trackId, quality) {
 async function resolvePlaybackMedia(trackId, quality, context) {
     if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
 
-    // 1. Detect platform (iOS vs Android)
-    const isiOS = 
-        (typeof navigator !== 'undefined' && navigator.platform && /iPhone|iPad|iPod|Mac/i.test(navigator.platform)) ||
-        (context?.platform === 'ios') ||
-        (context?.os === 'ios') ||
-        (typeof navigator !== 'undefined' && navigator.userAgent && /iPhone|iPad|iPod|Apple/i.test(navigator.userAgent));
+    // 1. Detect platform (iOS vs Android) using bulletproof bridge & JS checks
+    let isiOS = false;
+    if (context?.platform === 'ios' || context?.os === 'ios') {
+        isiOS = true;
+    } else if (typeof navigator !== 'undefined' && navigator.platform && /iPhone|iPad|iPod|Mac/i.test(navigator.platform)) {
+        isiOS = true;
+    } else {
+        // Query React Native Native Bridge / TurboModule Registry for PlatformConstants
+        const platformConstants = 
+            global.PlatformConstants || 
+            global.nativeModuleProxy?.PlatformConstants || 
+            (typeof global.__turboModuleProxy === 'function' && global.__turboModuleProxy('PlatformConstants'));
+
+        if (platformConstants) {
+            const sysName = platformConstants.systemName || '';
+            if (/iOS|iPadOS|iPhone/i.test(sysName)) {
+                isiOS = true;
+            }
+        } else if (typeof HermesInternal === 'undefined') {
+            // Default fallback if no Hermes and no platform constants (standard JSC on iOS)
+            isiOS = true;
+        }
+    }
 
     console.log(LOG_PREFIX, 'Resolving playback for:', trackId, 'isiOS:', isiOS);
 
@@ -707,7 +724,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '6.3',
+    version: '6.4',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
