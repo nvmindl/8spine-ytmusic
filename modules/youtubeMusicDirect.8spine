@@ -385,32 +385,39 @@ async function resolveDirectAudio(trackId, quality) {
 async function resolvePlaybackMedia(trackId, quality, context) {
     if (!trackId) throw new Error(LOG_PREFIX + ' Missing trackId');
 
-    // 1. Detect platform (iOS vs Android) using bulletproof bridge & JS checks
-    let isiOS = false;
-    if (context?.platform === 'ios' || context?.os === 'ios') {
-        isiOS = true;
-    } else if (typeof navigator !== 'undefined' && navigator.platform && /iPhone|iPad|iPod|Mac/i.test(navigator.platform)) {
-        isiOS = true;
-    } else {
-        // Query React Native Native Bridge / TurboModule Registry for PlatformConstants
-        let platformConstants = global.PlatformConstants || (global.nativeModuleProxy && global.nativeModuleProxy.PlatformConstants);
-        if (!platformConstants && typeof global.__turboModuleProxy === 'function') {
-            try {
-                platformConstants = global.__turboModuleProxy('PlatformConstants');
-            } catch (e) {
-                // Ignore registry lookups if not registered
+    // 1. Detect platform (iOS vs Android) - default to iOS and try to prove Android
+    let isiOS = true; 
+    try {
+        let isAndroid = false;
+        if (context?.platform === 'android' || context?.os === 'android') {
+            isAndroid = true;
+        } else if (typeof navigator !== 'undefined' && navigator.platform && /Android|Linux/i.test(navigator.platform)) {
+            isAndroid = true;
+        } else {
+            let platformConstants = global.PlatformConstants;
+            if (!platformConstants && global.nativeModuleProxy) {
+                try { platformConstants = global.nativeModuleProxy.PlatformConstants; } catch (e) {}
+            }
+            if (!platformConstants && typeof global.__turboModuleProxy === 'function') {
+                try { platformConstants = global.__turboModuleProxy('PlatformConstants'); } catch (e) {}
+            }
+
+            if (platformConstants) {
+                const sysName = platformConstants.systemName || '';
+                if (/Android/i.test(sysName)) {
+                    isAndroid = true;
+                } else if (platformConstants.Version !== undefined && typeof platformConstants.Version === 'number') {
+                    isAndroid = true;
+                }
             }
         }
 
-        if (platformConstants) {
-            const sysName = platformConstants.systemName || '';
-            if (/iOS|iPadOS|iPhone/i.test(sysName)) {
-                isiOS = true;
-            }
-        } else if (typeof HermesInternal === 'undefined') {
-            // Default fallback if no Hermes and no platform constants (standard JSC on iOS)
-            isiOS = true;
+        if (isAndroid) {
+            isiOS = false;
         }
+    } catch (e) {
+        console.log(LOG_PREFIX, 'Platform detection error, defaulting to iOS:', e.message);
+        isiOS = true;
     }
 
     console.log(LOG_PREFIX, 'Resolving playback for:', trackId, 'isiOS:', isiOS);
@@ -687,7 +694,7 @@ return {
     id: 'youtube-music-direct',
     name: 'YouTube Music Direct',
     author: 'nvmindl',
-    version: '6.6',
+    version: '6.7',
     labels: ['YT Music', 'Audio', 'Download', 'Direct'],
     description: 'YouTube Music search with fresh direct audio playback and download support.',
 
